@@ -13,7 +13,7 @@ end
 
 abstract type StreamContext end
 
-const EightBitTypes = Union{UInt8,N0f8,ColorTypes.RGB{N0f8}}
+const EightBitTypes = Union{UInt8,N0f8,ColorTypes.RGB{N0f8},ColorTypes.Gray{N0f8}}
 const PermutedArray{T,N,perm,iperm,AA <: Array} = Base.PermutedDimsArrays.PermutedDimsArray{T,N,perm,iperm,AA}
 const VidArray{T,N} = Union{Array{T,N},PermutedArray{T,N}}
 
@@ -236,7 +236,6 @@ function AVInput(source::T, input_format=C_NULL; avio_ctx_buffer_size=65536) whe
 
     avin
 end
-
 
 function VideoReader(avin::AVInput, video_stream=1;
                      transcode::Bool=true,

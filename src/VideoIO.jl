@@ -1,8 +1,10 @@
 module VideoIO
 
-using FixedPointNumbers, ColorTypes, ImageCore, Requires
+using Libdl
+using FixedPointNumbers, ColorTypes, ImageCore, Requires, Dates
 
 include("init.jl")
+include("util.jl")
 include(joinpath(av_load_path, "AVUtil", "src", "AVUtil.jl"))
 include(joinpath(av_load_path, "AVCodecs", "src", "AVCodecs.jl"))
 include(joinpath(av_load_path, "AVFormat", "src", "AVFormat.jl"))
@@ -18,7 +20,7 @@ if have_avdevice()
     import .AVDevice
 end
 
-include("util.jl")
+include("info.jl")
 include("avio.jl")
 include("testvideos.jl")
 using .TestVideos
@@ -28,6 +30,13 @@ if Sys.islinux()
 end
 
 function __init__()
+    # Always check your dependencies from `deps.jl`
+    # TODO remove uncessary ENV["LD_LIBRARY_PATH"] from check_deps, so that
+    # it doesn't mess with LD_LIBRARY_PATH
+    # since check_deps is optional, I hope this is ok for now
+
+    # check_deps()
+
     global read_packet
     read_packet[] = @cfunction(_read_packet, Cint, (Ptr{AVInput}, Ptr{UInt8}, Cint))
 
@@ -37,8 +46,6 @@ function __init__()
         AVDevice.avdevice_register_all()
 
         if Sys.iswindows()
-            ffmpeg = joinpath(dirname(@__FILE__), "..", "deps", "ffmpeg-4.1-win$(Sys.WORD_SIZE)-shared", "bin", "ffmpeg.exe")
-
             global DEFAULT_CAMERA_FORMAT = AVFormat.av_find_input_format("dshow")
             global CAMERA_DEVICES
             push!(CAMERA_DEVICES, get_camera_devices(ffmpeg, "dshow", "dummy")...)
@@ -53,8 +60,6 @@ function __init__()
         end
 
         if Sys.isapple()
-            ffmpeg = joinpath(INSTALL_ROOT, "bin", "ffmpeg")
-
             global CAMERA_DEVICES = String[]
             try
                 global CAMERA_DEVICES = get_camera_devices(ffmpeg, "avfoundation", "\"\"")
@@ -72,28 +77,36 @@ function __init__()
         end
     end
 
-    @require ImageView = "86fae568-95e7-573e-a6b2-d8a6b900c9ef" begin
+    @require Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a" begin
         # Define read and retrieve for Images
-        function play(f, flip=false)
+        function play(f; flipx=false, flipy=false)
+            scene = Makie.Scene(resolution = (f.width, f.height))
             buf = read(f)
-            canvas, _ = ImageView.imshow(buf, flipx=flip, interactive=false)
-
+            makieimg = Makie.image!(scene,buf, show_axis = false, scale_plot = false)[end]
+            Makie.rotate!(scene, -0.5pi)
+            if flipx && flipy
+                Makie.scale!(scene, -1, -1, 1)
+            else
+                flipx && Makie.scale!(scene, -1, 1, 1)
+                flipy && Makie.scale!(scene, 1, -1, 1)
+            end
+            display(scene)
             while !eof(f)
                 read!(f, buf)
-                ImageView.imshow(canvas, buf, flipx=flip, interactive=false)
+                makieimg[1] = buf
                 sleep(1 / f.framerate)
             end
         end
 
-        function playvideo(video)
+        function playvideo(video;flipx=false,flipy=false)
             f = VideoIO.openvideo(video)
-            play(f)
+            play(f,flipx=flipx,flipy=flipy)
         end
 
         if have_avdevice()
             function viewcam(device=DEFAULT_CAMERA_DEVICE, format=DEFAULT_CAMERA_FORMAT)
                 camera = opencamera(device, format)
-                play(camera, true)
+                play(camera, flipx=true)
             end
         else
             function viewcam()
