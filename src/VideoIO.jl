@@ -21,12 +21,71 @@ if have_avdevice()
 end
 
 include("info.jl")
+include("avdictionary.jl")
 include("avio.jl")
 include("testvideos.jl")
 using .TestVideos
 
 if Sys.islinux()
     import Glob
+    function init_camera_devices()
+        append!(CAMERA_DEVICES, Glob.glob("video*", "/dev"))
+        DEFAULT_CAMERA_FORMAT[] = AVFormat.av_find_input_format("video4linux2")
+    end
+    function init_camera_settings()
+        DEFAULT_CAMERA_OPTIONS["framerate"] = 30
+        DEFAULT_CAMERA_DEVICE[] = isempty(CAMERA_DEVICES) ? "" : CAMERA_DEVICES[1]
+    end
+end
+
+if Sys.iswindows()
+    function init_camera_devices()
+        append!(CAMERA_DEVICES, get_camera_devices(ffmpeg, "dshow", "dummy"))
+        DEFAULT_CAMERA_FORMAT[] = AVFormat.av_find_input_format("dshow")
+    end
+    function init_camera_settings()
+        DEFAULT_CAMERA_OPTIONS["framerate"] = 30
+        DEFAULT_CAMERA_DEVICE[] = string(
+            "video=",
+            isempty(CAMERA_DEVICES) ? "0" : CAMERA_DEVICES[1]
+        )
+    end
+end
+
+if Sys.isapple()
+    function init_camera_devices()
+        try
+            append!(CAMERA_DEVICES, get_camera_devices(ffmpeg, "avfoundation", "\"\""))
+            DEFAULT_CAMERA_FORMAT[] = AVFormat.av_find_input_format("avfoundation")
+        catch
+            try
+                append!(CAMERA_DEVICES, get_camera_devices(ffmpeg, "qtkit", "\"\""))
+                DEFAULT_CAMERA_FORMAT[] = AVFormat.av_find_input_format("qtkit")
+            catch
+            end
+        end
+    end
+    function init_camera_settings()
+        DEFAULT_CAMERA_OPTIONS["framerate"] = 30
+        # Note: "Integrated" is another possible default value
+        DEFAULT_CAMERA_OPTIONS["pixel_format"] = "uyvy422"
+        DEFAULT_CAMERA_DEVICE[] = isempty(CAMERA_DEVICES) ? "0" : CAMERA_DEVICES[1]
+    end
+end
+
+#Helper functions to explain about Makie load order requirement
+function play(f; flipx=false, flipy=false)
+    error("Makie must be loaded before VideoIO to provide video playback functionality. Try a new session with `using Makie, VideoIO`")
+end
+function playvideo(video;flipx=false,flipy=false)
+    error("Makie must be loaded before VideoIO to provide video playback functionality. Try a new session with `using Makie, VideoIO`")
+end
+function viewcam(device=DEFAULT_CAMERA_DEVICE, format=DEFAULT_CAMERA_FORMAT)
+    if have_avdevice()
+        error("Makie must be loaded before VideoIO to provide camera playback functionality. Try a new session with `using Makie, VideoIO`")
+    else
+        error("No AV device detected")
+    end
 end
 
 function __init__()
@@ -36,45 +95,14 @@ function __init__()
     # since check_deps is optional, I hope this is ok for now
 
     # check_deps()
-
-    global read_packet
     read_packet[] = @cfunction(_read_packet, Cint, (Ptr{AVInput}, Ptr{UInt8}, Cint))
 
     av_register_all()
 
     if have_avdevice()
         AVDevice.avdevice_register_all()
-
-        if Sys.iswindows()
-            global DEFAULT_CAMERA_FORMAT = AVFormat.av_find_input_format("dshow")
-            global CAMERA_DEVICES
-            push!(CAMERA_DEVICES, get_camera_devices(ffmpeg, "dshow", "dummy")...)
-            global DEFAULT_CAMERA_DEVICE = length(CAMERA_DEVICES) > 0 ? CAMERA_DEVICES[1] : "0"
-
-        end
-
-        if Sys.islinux()
-            global DEFAULT_CAMERA_FORMAT = AVFormat.av_find_input_format("video4linux2")
-            global CAMERA_DEVICES = Glob.glob("video*", "/dev")
-            global DEFAULT_CAMERA_DEVICE = length(CAMERA_DEVICES) > 0 ? CAMERA_DEVICES[1] : ""
-        end
-
-        if Sys.isapple()
-            global CAMERA_DEVICES = String[]
-            try
-                global CAMERA_DEVICES = get_camera_devices(ffmpeg, "avfoundation", "\"\"")
-                global DEFAULT_CAMERA_FORMAT = AVFormat.av_find_input_format("avfoundation")
-            catch
-                try
-                    global CAMERA_DEVICES = get_camera_devices(ffmpeg, "qtkit", "\"\"")
-                    global DEFAULT_CAMERA_FORMAT = AVFormat.av_find_input_format("qtkit")
-                catch
-                end
-            end
-
-            # Note: "Integrated" is another possible default value
-            DEFAULT_CAMERA_DEVICE = length(CAMERA_DEVICES) > 0 ? CAMERA_DEVICES[1] : "FaceTime"
-        end
+        init_camera_devices()
+        init_camera_settings()
     end
 
     @require Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a" begin
@@ -91,7 +119,7 @@ function __init__()
                 flipy && Makie.scale!(scene, 1, -1, 1)
             end
             display(scene)
-            while !eof(f)
+            while !eof(f) && isopen(scene)
                 read!(f, buf)
                 makieimg[1] = buf
                 sleep(1 / f.framerate)
@@ -105,12 +133,10 @@ function __init__()
 
         if have_avdevice()
             function viewcam(device=DEFAULT_CAMERA_DEVICE, format=DEFAULT_CAMERA_FORMAT)
-                camera = opencamera(device, format)
+                init_camera_settings()
+                camera = opencamera(device[], format[])
                 play(camera, flipx=true)
-            end
-        else
-            function viewcam()
-                error("libavdevice not present")
+                close(camera)
             end
         end
     end
