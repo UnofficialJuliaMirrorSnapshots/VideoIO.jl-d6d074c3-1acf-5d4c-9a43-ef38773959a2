@@ -16,7 +16,7 @@ swapext(f, new_ext) = "$(splitext(f)[1])$new_ext"
 
 isarm() = Base.Sys.ARCH in (:arm,:arm32,:arm7l,:armv7l,:arm8l,:armv8l,:aarch64,:arm64)
 
-@show Base.Sys.ARCH
+#@show Base.Sys.ARCH
 
 @noinline function isblank(img)
     all(c->green(c) == 0, img) || all(c->blue(c) == 0, img) || all(c->red(c) == 0, img) || maximum(rawview(channelview(img))) < 0xcf
@@ -249,6 +249,12 @@ end
         @test size(imgstack_rgb[1]) == size(imgstack_rgb_copy[1])
         @test !any(.!(imgstack_rgb .== imgstack_rgb_copy))
     end
+end
+
+@testset "Storage Aspect Ratio: SAR" begin
+    # currently, the SAR of all the test videos is 1, we should get another video with a valid SAR that is not equal to 1
+    vids = Dict("ladybird.mp4" => 1, "black_hole.webm" => 1, "crescent-moon.ogv" => 1, "annie_oakley.ogg" => 1)
+    @test all(VideoIO.aspect_ratio(VideoIO.openvideo(joinpath(videodir, k))) == v for (k,v) in vids)
 end
 
 #VideoIO.TestVideos.remove_all()
