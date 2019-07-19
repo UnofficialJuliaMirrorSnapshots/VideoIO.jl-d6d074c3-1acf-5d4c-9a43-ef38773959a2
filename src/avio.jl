@@ -2,7 +2,7 @@
 
 import Base: read, read!, show, close, eof, isopen, seek, seekstart
 
-export read, read!, pump, openvideo, opencamera, playvideo, viewcam, play
+export read, read!, pump, openvideo, opencamera, playvideo, viewcam, play, gettime
 
 mutable struct StreamInfo
     stream_index0::Int             # zero-based
@@ -13,7 +13,7 @@ end
 
 abstract type StreamContext end
 
-const EightBitTypes = Union{UInt8,N0f8,ColorTypes.RGB{N0f8},ColorTypes.Gray{N0f8}}
+const EightBitTypes = Union{UInt8,N0f8,RGB{N0f8},Gray{N0f8}}
 const PermutedArray{T,N,perm,iperm,AA <: Array} = Base.PermutedDimsArrays.PermutedDimsArray{T,N,perm,iperm,AA}
 const VidArray{T,N} = Union{Array{T,N},PermutedArray{T,N}}
 
@@ -476,6 +476,17 @@ function seconds_to_timestamp(s::Float64, time_base::AVRational)
     return round(Int64, floor(s *  convert(Float64, time_base.den) / convert(Float64, time_base.num)))
 end
 
+"""
+    gettime(s::VideoReader;video_stream::Integer=1)
+
+Return timestamp of current position in seconds.
+"""
+function gettime(s::VideoReader;video_stream::Integer=1)
+    time_base = s.avin.video_info[video_stream].stream.time_base
+    frameindex = s.aVideoFrame[video_stream].pkt_dts   #av_frame_get_best_effort_timestamp(s.aVideoFrame)
+    return frameindex * (time_base.num/time_base.den)
+end
+
 function seek(s::VideoReader, seconds::AbstractFloat,
               seconds_min::AbstractFloat=-1.0,  seconds_max::AbstractFloat=-1.0,
               video_stream::Integer=1, forward::Bool=false)
@@ -630,12 +641,12 @@ const CAMERA_DEVICES = String[]
 const DEFAULT_CAMERA_DEVICE = Ref{String}()
 const DEFAULT_CAMERA_OPTIONS = AVDict()
 
-if have_avdevice()
+if FFMPEG.have_avdevice()
     function get_camera_devices(ffmpeg, idev, idev_name)
         camera_devices = String[]
 
         read_vid_devs = false
-        lines = collectexecoutput(`$ffmpeg -list_devices true -f $idev -i $idev_name`)
+        lines = FFMPEG.exe(`-list_devices true -f $idev -i $idev_name`,collect=true)
 
         for line in lines
             if occursin("video devices",line)

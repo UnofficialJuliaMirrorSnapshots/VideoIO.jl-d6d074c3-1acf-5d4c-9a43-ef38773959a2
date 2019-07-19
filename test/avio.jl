@@ -1,5 +1,6 @@
 using Test
-using ColorTypes, FileIO, ImageCore, ImageMagick, Dates, FixedPointNumbers, Statistics
+using ColorTypes: RGB, Gray, N0f8
+using FileIO, ImageCore, ImageMagick, Dates, Statistics
 using Statistics, StatsBase
 
 import VideoIO
@@ -20,18 +21,6 @@ isarm() = Base.Sys.ARCH in (:arm,:arm32,:arm7l,:armv7l,:arm8l,:armv8l,:aarch64,:
 
 @noinline function isblank(img)
     all(c->green(c) == 0, img) || all(c->blue(c) == 0, img) || all(c->red(c) == 0, img) || maximum(rawview(channelview(img))) < 0xcf
-end
-
-# tesing that the executables run by testing the standard first line output
-@testset "Executable functionality (ffmpeg & ffprobe)" begin
-    withenv(VideoIO.execenv) do
-        out = VideoIO.collectexecoutput(`$(VideoIO.ffmpeg)`)
-        @test occursin("ffmpeg version ",out[1])
-    end
-    withenv(VideoIO.execenv) do
-        out = VideoIO.collectexecoutput(`$(VideoIO.ffprobe)`)
-        @test occursin("ffprobe version ",out[1])
-    end
 end
 
 @testset "UInt8 accuracy during read & encode" begin
@@ -100,6 +89,9 @@ end
 
             f = VideoIO.testvideo(name)
             v = VideoIO.openvideo(f)
+            
+            time_seconds = VideoIO.gettime(v)
+            @test time_seconds == 0
 
             if !createmode && (size(first_frame, 1) > v.height)
                 first_frame = first_frame[1+size(first_frame,1)-v.height:end,:]
@@ -197,9 +189,9 @@ end
 @testset "Reading video duration, start date, and duration" begin
     # tesing the duration and date & time functions:
     file = joinpath(videodir, "annie_oakley.ogg")
-    @test VideoIO.get_duration(file) == Dates.Microsecond(24224200)
+    @test VideoIO.get_duration(file) == 24224200/1e6
     @test VideoIO.get_start_time(file) == DateTime(1970, 1, 1)
-    @test VideoIO.get_time_duration(file) == (DateTime(1970, 1, 1), Dates.Microsecond(24224200))
+    @test VideoIO.get_time_duration(file) == (DateTime(1970, 1, 1), 24224200/1e6)
 end
 
 @testset "Lossless video encoding (read, encode, read, compare)" begin
