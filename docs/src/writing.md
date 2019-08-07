@@ -8,12 +8,13 @@ Videos can be encoded directly from image stack using `encodevideo(filename::Str
 
 For instance, say an image stack has been constructed from reading a series of image files `1.png`, `2.png`,`3.png` etc. :
 ```julia
+using FileIO
 imgnames = filter(x->occursin(".png",x),readdir()) # Populate list of all .pngs
 intstrings =  map(x->split(x,".")[1],imgnames) # Extract index from filenames
 p = sortperm(parse.(Int,intstrings)) #sort files numerically
 imgstack = []
 for imgname in imgnames[p]
-    push!(imgstack,read(imgname))
+    push!(imgstack,load(imgname))
 end
 ```
 
@@ -34,7 +35,7 @@ VideoIO.encodevideo
 
 ## Iterative Encoding
 
-Alternatively, videos can be encoded iteratively within custom loops. 
+Alternatively, videos can be encoded iteratively within custom loops.
 The encoding steps follow:
 1. Initialize encoder with `prepareencoder`
 2. Iteratively add frames with `appendencode`
@@ -96,7 +97,7 @@ Encoding of the following image element color types currently supported:
 - `Gray{N0f8}`
 - `RGB{N0f8}`
 
-## Encoder settings
+## Encoder Settings
 
 The `AVCodecContextProperties` object allows control of the majority of settings required.
 Optional fields can be found [here](https://ffmpeg.org/doxygen/4.1/structAVCodecContext.html).
@@ -110,12 +111,12 @@ A few helpful presets for h264:
 | Lossless compression.<br>Slowest, smallest file size | ```[:priv_data => ("crf"=>"0","preset"=>"ultraslow")]``` |
 | Direct control of bitrate and frequency of intra frames (every 10) | ```[:bit_rate => 400000,:gop_size = 10,:max_b_frames=1]``` |
 
-## Lossless encoding
+## Lossless Encoding
 ### Lossless RGB
 If lossless encoding of `RGB{N0f8}` is required, _true_ lossless requires using `codec_name = "libx264rgb"`, to avoid the lossy RGB->YUV420 conversion, and `"crf" => "0"`.
 
 ### Lossless Grayscale
-If lossless encoding of `Gray{N0f8}` or `UInt8` is required, `"crf" => "0"` should be set, as well as `:color_range=>2` to ensure full 8-bit pixel color representation. i.e. 
+If lossless encoding of `Gray{N0f8}` or `UInt8` is required, `"crf" => "0"` should be set, as well as `:color_range=>2` to ensure full 8-bit pixel color representation. i.e.
 ```[:color_range=>2, :priv_data => ("crf"=>"0","preset"=>"medium")]```
 
 ### Encoding Performance
